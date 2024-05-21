@@ -26,19 +26,30 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.util.concurrent.TimeUnit
 
 class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnalysis.Analyzer {
     private val client = OkHttpClient()
+    var question: String? = null
+    private var lastCallTimestamp = 0L
 
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(image: ImageProxy) {
-        val mediaImage = image.image
-        if (mediaImage != null) {
-            // Process the image and log details
-            val bitmap = imageProxyToBitmap(image)
-            if (bitmap != null) {
-                processImage(bitmap)
+        val currentTimestamp = System.currentTimeMillis()
+
+        // Throttle the streamImagesAndDescribe call to every 5 seconds
+        if (currentTimestamp - lastCallTimestamp >= TimeUnit.SECONDS.toMillis(5)) {
+            lastCallTimestamp = currentTimestamp
+            val mediaImage = image.image
+            if (mediaImage != null) {
+                // Process the image and log details
+                val bitmap = imageProxyToBitmap(image)
+                if (bitmap != null) {
+                    processImage(bitmap)
+                }
+                image.close()
             }
+        } else {
             image.close()
         }
     }
@@ -72,7 +83,7 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
                 base64Image?.let {
                     onImageEncoded(it)
                     CoroutineScope(Dispatchers.Main).launch {
-                        askQuestionAboutImage(it)
+                        streamImagesAndDescribe(it)
                     }
                 } ?: run {
                     Log.e("DemoActivity", "Failed to encode image to Base64")
@@ -97,7 +108,7 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
         }
     }
 
-    private fun askQuestionAboutImage(imageBase64: String) {
+    private fun streamImagesAndDescribe(imageBase64: String) {
         val imageUrl = "data:image/jpeg;base64,$imageBase64"
         val jsonBody = JSONObject().apply {
             put("model", "gpt-4o")
@@ -122,14 +133,12 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
                 put(JSONObject().apply {
                     put("role", "user")
                     put("content", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("type", "text")
-                            put("text", "<question>\n" +
-                                    "Was my tv turn on or off?\n" +
-                                    "</question>\n" +
-                                    "If a question is listed, please answer it as thoroughly as you can based on the details you remember from the scene. Provide your answer in <answer> tags. If the question cannot be answered based on the information in the images, say so.\n" +
-                                    "If no question is listed, then simply await further instructions. Remember, your goal is to be a helpful virtual assistant by understanding the context provided in the images and answering any questions about the scene to the best of your knowledge and recollection. Always be honest about what you do and do not know based on the limited information available in the images.")
-                        })
+                        if (question != null) {
+                            put(JSONObject().apply {
+                                put("type", "text")
+                                put("text", question)
+                            })
+                        }
                         put(JSONObject().apply {
                             put("type", "image_url")
                             put("image_url", JSONObject().apply {
@@ -144,24 +153,32 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
         val requestBody = RequestBody.create("application/json; charset=utf-8".toMediaTypeOrNull(), jsonBody.toString())
         val request = Request.Builder()
             .url("https://api.openai.com/v1/chat/completions")
-            .addHeader("Authorization", "")
+            .addHeader("Authorization", "Bearer ")
             .post(requestBody)
             .build()
+
+        // Log the request details
+        Log.d("DemoActivity", "stream Request URL: ${request.url}")
+        Log.d("DemoActivity", "stream Request Headers: ${request.headers}")
+        Log.d("DemoActivity", "stream Request Body: ${jsonBody.toString(4)}") // Pretty print JSON body
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.e("DemoActivity", "Failed to get response: ${e.message}")
+                question = null
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.body?.let {
                     val responseBody = it.string()
                     val responseJson = JSONObject(responseBody)
-                    Log.d("DemoActivity", "Response: $responseBody");
+                    Log.d("DemoActivity", "Stream Response: $responseBody");
                     val content = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
                     Log.d("DemoActivity", "Answer: $content")
+                    question = null
                 }
             }
         })
     }
+
 }
