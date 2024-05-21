@@ -1,27 +1,24 @@
 package com.example.myapplication
 
-import android.os.Bundle
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.view.PreviewView
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
+import android.os.Bundle
 import android.util.Log
+import android.widget.Button
 import android.widget.ImageView
+import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.pixelcarrot.base64image.Base64Image
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -39,23 +36,71 @@ import kotlin.coroutines.resumeWithException
 class DemoActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var imageView: ImageView
+    private lateinit var speechRecognizerManager: SpeechRecognizerManager
+    private var isListening = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_demo)
         previewView = findViewById(R.id.previewView)
-        imageView = findViewById(R.id.imageView)
+        val buttonRecord: Button = findViewById(R.id.button_record)
+
+        speechRecognizerManager = SpeechRecognizerManager(this, { result ->
+            Log.d("SpeechRecognizerManager", "Result: $result")
+        }, {
+            // Callback for end of speech
+            Log.d("SpeechRecognizerManager", "end")
+            runOnUiThread {
+                buttonRecord.text = "Start Recording"
+                isListening = false
+            }
+        })
+
+        buttonRecord.setOnClickListener {
+            if (checkPermissions()) {
+                if (isListening) {
+                    speechRecognizerManager.stopListening()
+                    buttonRecord.text = "Start Recording"
+                } else {
+                    speechRecognizerManager.startListening()
+                    buttonRecord.text = "Stop Recording"
+                }
+                isListening = !isListening
+            }
+        }
 
 //        initCameraOrPermissions()
-        CoroutineScope(Dispatchers.IO).launch {
-            textToSpeech()
-        }
+//        CoroutineScope(Dispatchers.IO).launch {
+//            textToSpeech()
+//        }
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        speechRecognizerManager.destroy()
+    }
+
+    private fun checkPermissions(): Boolean {
+        val requiredPermissions = arrayOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.INTERNET
+        )
+        val missingPermissions = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        return if (missingPermissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missingPermissions.toTypedArray(), 0)
+            false
+        } else {
+            true
         }
     }
 
@@ -86,9 +131,7 @@ class DemoActivity : AppCompatActivity() {
                 .build()
                 .also {
                     it.setAnalyzer(ContextCompat.getMainExecutor(this), MyImageAnalyzer { encodedImage ->
-                        runOnUiThread {
-                            displayEncodedImage(encodedImage)
-                        }
+                        runOnUiThread {}
                     })
                 }
 
@@ -102,13 +145,6 @@ class DemoActivity : AppCompatActivity() {
             }
 
         }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun displayEncodedImage(encodedImage: String) {
-        // Decode the Base64 string to a Bitmap
-        Base64Image.decode(encodedImage) { bitmap ->
-            imageView.setImageBitmap(bitmap)
-        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {

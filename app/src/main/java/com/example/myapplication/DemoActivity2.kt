@@ -63,7 +63,6 @@ class DemoActivity2 : AppCompatActivity() {
         setContentView(R.layout.activity_demo)
         enableEdgeToEdge()
         previewView = findViewById(R.id.previewView)
-        imageView = findViewById(R.id.imageView)
 
         // Initialize the document picker
         openDocumentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->

@@ -108,7 +108,14 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
                     put("content", JSONArray().apply {
                         put(JSONObject().apply {
                             put("type", "text")
-                            put("text", "You are a helpful assistant that responds in Markdown. Help me with my math homework!")
+                            put("text", "You will be acting as a context-aware virtual assistant for my Android phone. I will be streaming a series of pictures from my phone's camera to you. Your task is to carefully examine these images and describe the scene in as much detail as possible from the point of view of the camera.\n" +
+                                    "The images have been attached.\n" +
+                                    "Please look over the images carefully. In your description of the scene, make sure to cover:\n" +
+                                    "- What seems to be happening in the images\n" +
+                                    "- What type of event or activity the images depict\n" +
+                                    "- All the major objects, people, or other elements you see in the images\n" +
+                                    "Describe the scene in <scene_description> tags. Try your best to remember all the key details.\n" +
+                                    "After describing the scene, I may ask you a follow-up question about some aspect of it. ")
                         })
                     })
                 })
@@ -117,7 +124,11 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
                     put("content", JSONArray().apply {
                         put(JSONObject().apply {
                             put("type", "text")
-                            put("text", "What's the area of the triangle?")
+                            put("text", "<question>\n" +
+                                    "Was my tv turn on or off?\n" +
+                                    "</question>\n" +
+                                    "If a question is listed, please answer it as thoroughly as you can based on the details you remember from the scene. Provide your answer in <answer> tags. If the question cannot be answered based on the information in the images, say so.\n" +
+                                    "If no question is listed, then simply await further instructions. Remember, your goal is to be a helpful virtual assistant by understanding the context provided in the images and answering any questions about the scene to the best of your knowledge and recollection. Always be honest about what you do and do not know based on the limited information available in the images.")
                         })
                         put(JSONObject().apply {
                             put("type", "image_url")
@@ -146,6 +157,7 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
                 response.body?.let {
                     val responseBody = it.string()
                     val responseJson = JSONObject(responseBody)
+                    Log.d("DemoActivity", "Response: $responseBody");
                     val content = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
                     Log.d("DemoActivity", "Answer: $content")
                 }
