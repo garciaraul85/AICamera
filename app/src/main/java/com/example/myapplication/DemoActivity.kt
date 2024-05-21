@@ -6,7 +6,6 @@ import android.media.MediaPlayer
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
-import android.widget.ImageView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
@@ -35,9 +34,9 @@ import kotlin.coroutines.resumeWithException
 
 class DemoActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
-    private lateinit var imageView: ImageView
     private lateinit var speechRecognizerManager: SpeechRecognizerManager
     private var isListening = false
+    private lateinit var imageAnalyzer: MyImageAnalyzer
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,8 +45,11 @@ class DemoActivity : AppCompatActivity() {
         previewView = findViewById(R.id.previewView)
         val buttonRecord: Button = findViewById(R.id.button_record)
 
+        imageAnalyzer = MyImageAnalyzer{}
         speechRecognizerManager = SpeechRecognizerManager(this, { result ->
             Log.d("SpeechRecognizerManager", "Result: $result")
+//            imageAnalyzer.askQuestion("Am I in the tv room?")
+            imageAnalyzer.question = result
         }, {
             // Callback for end of speech
             Log.d("SpeechRecognizerManager", "end")
@@ -70,7 +72,7 @@ class DemoActivity : AppCompatActivity() {
             }
         }
 
-//        initCameraOrPermissions()
+        initCameraOrPermissions()
 //        CoroutineScope(Dispatchers.IO).launch {
 //            textToSpeech()
 //        }
@@ -130,9 +132,7 @@ class DemoActivity : AppCompatActivity() {
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
                 .also {
-                    it.setAnalyzer(ContextCompat.getMainExecutor(this), MyImageAnalyzer { encodedImage ->
-                        runOnUiThread {}
-                    })
+                    it.setAnalyzer(ContextCompat.getMainExecutor(this), imageAnalyzer)
                 }
 
             try {
