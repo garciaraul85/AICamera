@@ -17,7 +17,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.example.myapplication.db.ImageDescriptionDao
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -37,19 +41,29 @@ class DemoActivity : AppCompatActivity() {
     private lateinit var speechRecognizerManager: SpeechRecognizerManager
     private var isListening = false
     private lateinit var imageAnalyzer: MyImageAnalyzer
+    private lateinit var imageDescriptionDao: ImageDescriptionDao
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_demo)
         previewView = findViewById(R.id.previewView)
+
+        // Get the database instance from the application context
+        val app = application as App
+        imageDescriptionDao = app.database.imageDescriptionDao()
+
         val buttonRecord: Button = findViewById(R.id.button_record)
 
-        imageAnalyzer = MyImageAnalyzer{}
+        imageAnalyzer = MyImageAnalyzer(imageDescriptionDao) { base64Image ->
+            handleImage(base64Image)
+        }
+
         speechRecognizerManager = SpeechRecognizerManager(this, { result ->
-            Log.d("SpeechRecognizerManager", "Result: $result")
+            Log.d("SpeechRecognizerManager", "SpeechRecognizerManager Result")
 //            imageAnalyzer.askQuestion("Am I in the tv room?")
-            imageAnalyzer.question = result
+//            imageAnalyzer.question = result
+            imageAnalyzer.addQuestion(result)
         }, {
             // Callback for end of speech
             Log.d("SpeechRecognizerManager", "end")
@@ -81,6 +95,20 @@ class DemoActivity : AppCompatActivity() {
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
+        }
+    }
+
+    private fun handleImage(base64Image: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            // Send the image description request
+            imageAnalyzer.streamImagesAndDescribe(base64Image)
+
+            // Process the question if there is any
+            val question = imageAnalyzer.questionQueue.poll()
+            Log.d("SpeechRecognizerManager", "handleImage, Question: $question here?")
+            if (question != null) {
+                imageAnalyzer.processQuestion(base64Image, question)
+            }
         }
     }
 
