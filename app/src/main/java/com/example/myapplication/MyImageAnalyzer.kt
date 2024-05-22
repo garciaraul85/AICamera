@@ -32,8 +32,11 @@ import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-class MyImageAnalyzer(private val imageDescriptionDao: ImageDescriptionDao,
-                      private val onImageEncoded: (String) -> Unit) : ImageAnalysis.Analyzer {
+class MyImageAnalyzer(
+    private val imageDescriptionDao: ImageDescriptionDao,
+    private val onImageEncoded: (String) -> Unit,
+    private val onAnswerReceived: (String) -> Unit
+) : ImageAnalysis.Analyzer {
     private val client = OkHttpClient()
     val questionQueue: BlockingQueue<String> = LinkedBlockingQueue()
     private var lastCallTimestamp = 0L
@@ -125,6 +128,9 @@ class MyImageAnalyzer(private val imageDescriptionDao: ImageDescriptionDao,
 
     fun streamImagesAndDescribe(imageBase64: String) {
         val imageUrl = "data:image/jpeg;base64,$imageBase64"
+
+        Log.d("MyImageAnalyser", "is there an image ${(imageBase64 != null)}")
+
         val jsonBody = JSONObject().apply {
             put("model", "gpt-4o")
             put("temperature", 0.0)
@@ -181,20 +187,28 @@ class MyImageAnalyzer(private val imageDescriptionDao: ImageDescriptionDao,
                     val responseBody = it.string()
                     val responseJson = JSONObject(responseBody)
                     Log.d("DemoActivity", "Stream Response: $responseBody");
-                    val content = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-                    Log.d("DemoActivity", "Answer: $content")
-                    // Save the description to the database only if it's valid
-                    if (content.isNotBlank()) {
-                        val description = ImageDescription(
-                            description = content,
-                            encodedImage = imageBase64,
-                            timestamp = System.currentTimeMillis()
-                        )
-                        imageDescriptionDao.insertDescription(description)
-                        // Delete the oldest descriptions if there are more than 20
-                        if (imageDescriptionDao.getLast20Descriptions().size > 20) {
-                            imageDescriptionDao.deleteOldest(1)
+                    if (responseJson.has("choices")) {
+                        val content = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+                        Log.d("DemoActivity", "Answer: $content")
+                        // Save the description to the database only if it's valid
+                        if (content.isNotBlank()) {
+                            val description = ImageDescription(
+                                description = content,
+                                encodedImage = imageBase64,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            imageDescriptionDao.insertDescription(description)
+                            // Delete the oldest descriptions if there are more than 20
+                            if (imageDescriptionDao.getLast20Descriptions().size > 20) {
+                                imageDescriptionDao.deleteOldest(1)
+                            } else {
+                                Log.d("DemoActivity", "Description saved successfully")
+                            }
+                        } else {
+                            Log.d("DemoActivity", "Content is blank")
                         }
+                    } else {
+                        Log.e("DemoActivity", "Invalid response: $responseBody")
                     }
                 }
             }
@@ -261,6 +275,7 @@ class MyImageAnalyzer(private val imageDescriptionDao: ImageDescriptionDao,
                     val responseJson = JSONObject(responseBody)
                     val content = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
                     Log.d("DemoActivity", " processQuestion Question: $question, Answer: $content")
+                    onAnswerReceived(content)
                     clearQuestion()
                 }
             }
