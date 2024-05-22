@@ -55,14 +55,18 @@ class DemoActivity : AppCompatActivity() {
 
         val buttonRecord: Button = findViewById(R.id.button_record)
 
-        imageAnalyzer = MyImageAnalyzer(imageDescriptionDao) { base64Image ->
+
+        imageAnalyzer = MyImageAnalyzer(imageDescriptionDao, { base64Image ->
             handleImage(base64Image)
-        }
+        }, { answer ->
+            CoroutineScope(Dispatchers.IO).launch {
+                Log.d("SpeechRecognizerManager", "textToSpeech: $answer")
+                textToSpeech(answer)
+            }
+        })
 
         speechRecognizerManager = SpeechRecognizerManager(this, { result ->
             Log.d("SpeechRecognizerManager", "SpeechRecognizerManager Result")
-//            imageAnalyzer.askQuestion("Am I in the tv room?")
-//            imageAnalyzer.question = result
             imageAnalyzer.addQuestion(result)
         }, {
             // Callback for end of speech
@@ -87,9 +91,6 @@ class DemoActivity : AppCompatActivity() {
         }
 
         initCameraOrPermissions()
-//        CoroutineScope(Dispatchers.IO).launch {
-//            textToSpeech()
-//        }
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -184,10 +185,9 @@ class DemoActivity : AppCompatActivity() {
     val CHUNK_SIZE = 1024
     val XI_API_KEY = ""
     val VOICE_ID = ""
-    val TEXT_TO_SPEAK = "Hello world!"
     val OUTPUT_FILENAME = "output.mp3"
 
-    private suspend fun textToSpeech() {
+    private suspend fun textToSpeech(text: String) {
         val ttsUrl = "https://api.elevenlabs.io/v1/text-to-speech/$VOICE_ID/stream"
 
         val headers = Headers.Builder()
@@ -197,7 +197,7 @@ class DemoActivity : AppCompatActivity() {
 
         val json = """
             {
-                "text": "$TEXT_TO_SPEAK",
+                "text": "$text",
                 "model_id": "eleven_multilingual_v2",
                 "voice_settings": {
                     "stability": 0.5,
