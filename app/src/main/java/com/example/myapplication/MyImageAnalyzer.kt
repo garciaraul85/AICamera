@@ -10,6 +10,8 @@ import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import com.example.myapplication.db.ImageDescription
+import com.example.myapplication.db.ImageDescriptionDao
 import com.pixelcarrot.base64image.Base64Image
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,12 +28,24 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.util.concurrent.BlockingQueue
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnalysis.Analyzer {
+class MyImageAnalyzer(private val imageDescriptionDao: ImageDescriptionDao,
+                      private val onImageEncoded: (String) -> Unit) : ImageAnalysis.Analyzer {
     private val client = OkHttpClient()
-    var question: String? = null
+    val questionQueue: BlockingQueue<String> = LinkedBlockingQueue()
     private var lastCallTimestamp = 0L
+    private val API = "Bearer"
+
+    fun addQuestion(question: String) {
+        questionQueue.put(question)
+    }
+
+    fun clearQuestion() {
+        questionQueue.clear()
+    }
 
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(image: ImageProxy) {
@@ -81,6 +95,7 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
         try {
             encodeImageToBase64(bitmap) { base64Image ->
                 base64Image?.let {
+                    Log.d("DemoActivity", "Encoded image")
                     onImageEncoded(it)
                     CoroutineScope(Dispatchers.Main).launch {
                         streamImagesAndDescribe(it)
@@ -108,7 +123,7 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
         }
     }
 
-    private fun streamImagesAndDescribe(imageBase64: String) {
+    fun streamImagesAndDescribe(imageBase64: String) {
         val imageUrl = "data:image/jpeg;base64,$imageBase64"
         val jsonBody = JSONObject().apply {
             put("model", "gpt-4o")
@@ -133,12 +148,6 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
                 put(JSONObject().apply {
                     put("role", "user")
                     put("content", JSONArray().apply {
-                        if (question != null) {
-                            put(JSONObject().apply {
-                                put("type", "text")
-                                put("text", question)
-                            })
-                        }
                         put(JSONObject().apply {
                             put("type", "image_url")
                             put("image_url", JSONObject().apply {
@@ -153,7 +162,7 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
         val requestBody = RequestBody.create("application/json; charset=utf-8".toMediaTypeOrNull(), jsonBody.toString())
         val request = Request.Builder()
             .url("https://api.openai.com/v1/chat/completions")
-            .addHeader("Authorization", "Bearer ")
+            .addHeader("Authorization", API)
             .post(requestBody)
             .build()
 
@@ -165,7 +174,6 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.e("DemoActivity", "Failed to get response: ${e.message}")
-                question = null
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -175,7 +183,85 @@ class MyImageAnalyzer(private val onImageEncoded: (String) -> Unit) : ImageAnaly
                     Log.d("DemoActivity", "Stream Response: $responseBody");
                     val content = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
                     Log.d("DemoActivity", "Answer: $content")
-                    question = null
+                    // Save the description to the database only if it's valid
+                    if (content.isNotBlank()) {
+                        val description = ImageDescription(
+                            description = content,
+                            encodedImage = imageBase64,
+                            timestamp = System.currentTimeMillis()
+                        )
+                        imageDescriptionDao.insertDescription(description)
+                        // Delete the oldest descriptions if there are more than 20
+                        if (imageDescriptionDao.getLast20Descriptions().size > 20) {
+                            imageDescriptionDao.deleteOldest(1)
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    fun processQuestion(imageBase64: String, question: String) {
+        Log.d("DemoActivity", "processQuestion: $question")
+        val imageUrl = "data:image/jpeg;base64,$imageBase64"
+        val jsonBody = JSONObject().apply {
+            put("model", "gpt-4o")
+            put("temperature", 0.0)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", "You will be acting as a context-aware virtual assistant. Answer the following question based on the previous descriptions and the current image. I just need you to answer the question only, I don't need anything else for you to answer.")
+                })
+                imageDescriptionDao.getLast20Descriptions().forEach {
+                    Log.d("DemoActivity", "Description: ${it.description}")
+                    put(JSONObject().apply {
+                        put("role", "system")
+                        put("content", it.description)
+                    })
+                }
+                Log.d("DemoActivity", "Question: $question")
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", question)
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().apply {
+                                put("url", imageUrl)
+                            })
+                        })
+                    })
+                })
+            })
+        }
+
+        val requestBody = RequestBody.create("application/json; charset=utf-8".toMediaTypeOrNull(), jsonBody.toString())
+        val request = Request.Builder()
+            .url("https://api.openai.com/v1/chat/completions")
+            .addHeader("Authorization", API)
+            .post(requestBody)
+            .build()
+
+        // Log the request details
+        Log.d("DemoActivity", "processQuestion Request URL: ${request.url}")
+        Log.d("DemoActivity", "processQuestion Request Headers: ${request.headers}")
+        Log.d("DemoActivity", "processQuestion Request Body: ${jsonBody.toString(4)}")
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("DemoActivity", " processQuestionFailed to get response: ${e.message}")
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.body?.let {
+                    val responseBody = it.string()
+                    val responseJson = JSONObject(responseBody)
+                    val content = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+                    Log.d("DemoActivity", " processQuestion Question: $question, Answer: $content")
+                    clearQuestion()
                 }
             }
         })
