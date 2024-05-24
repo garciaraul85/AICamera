@@ -7,9 +7,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.ScaleGestureDetector
 import android.widget.Button
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -27,7 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -45,6 +46,12 @@ class DemoActivity : AppCompatActivity() {
     private var isListening = false
     private lateinit var imageAnalyzer: MyImageAnalyzer
     private lateinit var imageDescriptionDao: ImageDescriptionDao
+
+    private lateinit var cameraControl: CameraControl
+    private lateinit var scaleGestureDetector: ScaleGestureDetector
+
+    private var currentZoomRatio = 1.0f
+    private var maxZoomRatio = 1.0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,6 +101,23 @@ class DemoActivity : AppCompatActivity() {
         }
 
         initCameraOrPermissions()
+
+        // Initialize the scale gesture detector
+        scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val scaleFactor = detector.scaleFactor
+                currentZoomRatio = (currentZoomRatio * scaleFactor).coerceIn(1.0f, maxZoomRatio)
+                cameraControl.setZoomRatio(currentZoomRatio)
+                return true
+            }
+        })
+
+        // Attach touch listener to the preview view
+        previewView.setOnTouchListener { _, event ->
+            scaleGestureDetector.onTouchEvent(event)
+            true
+        }
+
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -169,9 +193,11 @@ class DemoActivity : AppCompatActivity() {
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
+                val camera = cameraProvider.bindToLifecycle(
                     this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalyzer
                 )
+                cameraControl = camera.cameraControl
+                maxZoomRatio = camera.cameraInfo.zoomState.value?.maxZoomRatio ?: 1.0f
             } catch(exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
             }
