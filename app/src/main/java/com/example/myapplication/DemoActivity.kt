@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.ScaleGestureDetector
 import android.widget.Button
+import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraControl
@@ -53,11 +54,14 @@ class DemoActivity : AppCompatActivity() {
     private var currentZoomRatio = 1.0f
     private var maxZoomRatio = 1.0f
 
+    private lateinit var textViewSubtitles: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_demo)
         previewView = findViewById(R.id.previewView)
+        textViewSubtitles = findViewById(R.id.textView_subtitles)
 
         // Get the database instance from the application context
         val app = application as App
@@ -282,6 +286,10 @@ class DemoActivity : AppCompatActivity() {
                         Log.e("textToSpeech", "Audio file is incomplete.")
                     } else {
                         playAudio(file)
+                    }
+                    // Update TextView with TTS text
+                    runOnUiThread {
+                        textViewSubtitles.text = text
                     }
                 } ?: println("Failed to get response body.")
             } else {
