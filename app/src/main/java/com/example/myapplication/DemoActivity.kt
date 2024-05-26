@@ -23,6 +23,12 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.myapplication.db.ImageDescriptionDao
+import com.example.myapplication.util.Constants.API_KEY
+import com.example.myapplication.util.Constants.CHUNK_SIZE
+import com.example.myapplication.util.Constants.OUTPUT_FILENAME
+import com.example.myapplication.util.Constants.bitrate
+import com.example.myapplication.util.ImageAnalyzer
+import com.example.myapplication.util.QuestionSingleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,7 +51,7 @@ class DemoActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var speechRecognizerManager: SpeechRecognizerManager
     private var isListening = false
-    private lateinit var imageAnalyzer: MyImageAnalyzer
+    private lateinit var imageAnalyzer: ImageAnalyzer
     private lateinit var imageDescriptionDao: ImageDescriptionDao
 
     private lateinit var cameraControl: CameraControl
@@ -70,7 +76,7 @@ class DemoActivity : AppCompatActivity() {
 
         val buttonRecord: Button = findViewById(R.id.button_record)
 
-        imageAnalyzer = MyImageAnalyzer(imageDescriptionDao, { base64Image ->
+        imageAnalyzer = ImageAnalyzer(imageDescriptionDao, { base64Image ->
             handleImage(base64Image)
         }, { answer ->
             CoroutineScope(Dispatchers.IO).launch {
@@ -81,7 +87,7 @@ class DemoActivity : AppCompatActivity() {
 
         speechRecognizerManager = SpeechRecognizerManager(this, { result ->
             Log.d("SpeechRecognizerManager", "SpeechRecognizerManager Result")
-            imageAnalyzer.addQuestion(result)
+            QuestionSingleton.addQuestion(result)
         }, {
             // Callback for end of speech
             Log.d("SpeechRecognizerManager", "end")
@@ -138,7 +144,7 @@ class DemoActivity : AppCompatActivity() {
             imageAnalyzer.streamImagesAndDescribe(base64Image)
 
             // Process the question if there is any
-            val question = imageAnalyzer.questionQueue.poll()
+            val question = QuestionSingleton.questionQueue.poll()
             Log.d("SpeechRecognizerManager", "handleImage, Question: $question here?")
             if (question != null) {
                 imageAnalyzer.processQuestion(base64Image, question)
@@ -215,11 +221,6 @@ class DemoActivity : AppCompatActivity() {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    val CHUNK_SIZE = 1024
-    val OUTPUT_FILENAME = "output.mp3"
-    val bitrate = 128000
-    private val API = ""
-
     private suspend fun textToSpeechGPT(text: String) {
         val client = OkHttpClient()
         val mediaType = "application/json".toMediaType()
@@ -247,7 +248,7 @@ class DemoActivity : AppCompatActivity() {
             .url("https://api.openai.com/v1/audio/speech")
             .post(requestBody)
             .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", API)
+            .addHeader("Authorization", API_KEY)
             .build()
 
         Log.d("TextToSpeech", "Request URL: ${request.url}")
