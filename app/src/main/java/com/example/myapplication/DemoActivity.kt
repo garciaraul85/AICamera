@@ -29,6 +29,7 @@ import com.example.myapplication.util.Constants.OUTPUT_FILENAME
 import com.example.myapplication.util.Constants.bitrate
 import com.example.myapplication.util.ImageAnalyzer
 import com.example.myapplication.util.QuestionSingleton
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,11 +46,16 @@ import okhttp3.Response
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import javax.inject.Inject
 import kotlin.coroutines.resumeWithException
 
+@AndroidEntryPoint
 class DemoActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
-    private lateinit var speechRecognizerManager: SpeechRecognizerManager
+
+    @Inject
+    lateinit var speechRecognizerManager: SpeechRecognizerManager
+
     private var isListening = false
     private lateinit var imageAnalyzer: ImageAnalyzer
     private lateinit var imageDescriptionDao: ImageDescriptionDao
@@ -85,17 +91,19 @@ class DemoActivity : AppCompatActivity() {
             }
         })
 
-        speechRecognizerManager = SpeechRecognizerManager(this, { result ->
-            Log.d("SpeechRecognizerManager", "SpeechRecognizerManager Result")
-            QuestionSingleton.addQuestion(result)
-        }, {
-            // Callback for end of speech
-            Log.d("SpeechRecognizerManager", "end")
-            runOnUiThread {
-                buttonRecord.text = "Start Recording"
-                isListening = false
+        speechRecognizerManager.apply {
+            onResult = { result ->
+                Log.d("SpeechRecognizerManager", "SpeechRecognizerManager Result")
+                QuestionSingleton.addQuestion(result)
             }
-        })
+            onEndSpeech = {
+                Log.d("SpeechRecognizerManager", "end")
+                runOnUiThread {
+                    buttonRecord.text = "Start Recording"
+                    isListening = false
+                }
+            }
+        }
 
         buttonRecord.setOnClickListener {
             if (checkPermissions()) {

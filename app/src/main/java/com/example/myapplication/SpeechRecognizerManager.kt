@@ -7,9 +7,12 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import javax.inject.Inject
 
-class SpeechRecognizerManager(context: Context, private val onResult: (String) -> Unit,
-                              private val onEndSpeech: () -> Unit) {
+class SpeechRecognizerManager @Inject constructor(
+    context: Context,
+    var onResult: (String) -> Unit,
+    var onEndSpeech: () -> Unit) {
 
     private var speechRecognizer: SpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
     private var recognizerIntent: Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
