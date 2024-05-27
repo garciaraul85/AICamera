@@ -3,10 +3,7 @@ package com.example.myapplication
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.ScaleGestureDetector
 import android.widget.Button
@@ -23,31 +20,14 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.myapplication.db.ImageDescriptionDao
-import com.example.myapplication.util.Constants.API_KEY
-import com.example.myapplication.util.Constants.CHUNK_SIZE
-import com.example.myapplication.util.Constants.OUTPUT_FILENAME
-import com.example.myapplication.util.Constants.bitrate
+import com.example.myapplication.text2speech.TextToSpeechManager
 import com.example.myapplication.util.ImageAnalyzer
 import com.example.myapplication.util.QuestionSingleton
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 import javax.inject.Inject
-import kotlin.coroutines.resumeWithException
 
 @AndroidEntryPoint
 class DemoActivity : AppCompatActivity() {
@@ -55,6 +35,8 @@ class DemoActivity : AppCompatActivity() {
 
     @Inject
     lateinit var speechRecognizerManager: SpeechRecognizerManager
+    @Inject
+    lateinit var textToSpeechManager: TextToSpeechManager
 
     private var isListening = false
     private lateinit var imageAnalyzer: ImageAnalyzer
@@ -82,15 +64,59 @@ class DemoActivity : AppCompatActivity() {
 
         val buttonRecord: Button = findViewById(R.id.button_record)
 
+        initImageAnalyser()
+        handleSpeechRecognition(buttonRecord)
+        initCameraOrPermissions()
+        handleScaleGestures()
+        applyWindowInsetsPadding()
+    }
+
+    private fun initImageAnalyser() {
         imageAnalyzer = ImageAnalyzer(imageDescriptionDao, { base64Image ->
             handleImage(base64Image)
         }, { answer ->
             CoroutineScope(Dispatchers.IO).launch {
                 Log.d("SpeechRecognizerManager", "textToSpeech: $answer")
-                textToSpeechGPT(answer)
+                val duration = textToSpeechManager.textToSpeechGPT(answer)
+                runOnUiThread {
+                    textViewSubtitles.text = answer
+                    textViewSubtitles.startScroll()
+                    textViewSubtitles.setSpeed(duration.toFloat())
+                }
             }
         })
+    }
 
+    private fun applyWindowInsetsPadding() {
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun handleScaleGestures() {
+        // Initialize the scale gesture detector
+        scaleGestureDetector = ScaleGestureDetector(
+            this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    val scaleFactor = detector.scaleFactor
+                    currentZoomRatio = (currentZoomRatio * scaleFactor).coerceIn(1.0f, maxZoomRatio)
+                    cameraControl.setZoomRatio(currentZoomRatio)
+                    return true
+                }
+            })
+
+        // Attach touch listener to the preview view
+        previewView.setOnTouchListener { _, event ->
+            scaleGestureDetector.onTouchEvent(event)
+            true
+        }
+    }
+
+    private fun handleSpeechRecognition(buttonRecord: Button) {
         speechRecognizerManager.apply {
             onResult = { result ->
                 Log.d("SpeechRecognizerManager", "SpeechRecognizerManager Result")
@@ -116,33 +142,6 @@ class DemoActivity : AppCompatActivity() {
                 }
                 isListening = !isListening
             }
-        }
-
-        initCameraOrPermissions()
-
-        // Initialize the scale gesture detector
-        scaleGestureDetector = ScaleGestureDetector(
-            this,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    val scaleFactor = detector.scaleFactor
-                    currentZoomRatio = (currentZoomRatio * scaleFactor).coerceIn(1.0f, maxZoomRatio)
-                    cameraControl.setZoomRatio(currentZoomRatio)
-                    return true
-                }
-            })
-
-        // Attach touch listener to the preview view
-        previewView.setOnTouchListener { _, event ->
-            scaleGestureDetector.onTouchEvent(event)
-            true
-        }
-
-
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-            insets
         }
     }
 
@@ -227,140 +226,6 @@ class DemoActivity : AppCompatActivity() {
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private suspend fun textToSpeechGPT(text: String) {
-        val client = OkHttpClient()
-        val mediaType = "application/json".toMediaType()
-
-        val escapedText = text.replace("\"", "\\\"").replace("\n", "\\n")
-        Log.d("textToSpeech", "escapedText: $escapedText")
-
-        // Create the JSON string with proper formatting
-        val jsonBody = """
-        {
-            "model": "tts-1",
-            "input": "$escapedText",
-            "voice": "alloy"
-        }
-        """.trimIndent()
-
-        // Log the JSON string for debugging
-        Log.d("TextToSpeech", "Request Body: $jsonBody")
-
-        // Convert the JSON string to RequestBody
-        val requestBody: RequestBody = jsonBody.toRequestBody(mediaType)
-
-        // Build the request
-        val request = Request.Builder()
-            .url("https://api.openai.com/v1/audio/speech")
-            .post(requestBody)
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", API_KEY)
-            .build()
-
-        Log.d("TextToSpeech", "Request URL: ${request.url}")
-        Log.d("TextToSpeech", "Request Headers: ${request.headers}")
-
-        try {
-            val response = client.newCall(request).await()
-            if (response.isSuccessful) {
-                var totalBytesRead = 0
-                response.body?.let { responseBody ->
-                    val file = File(filesDir, OUTPUT_FILENAME)
-                    FileOutputStream(file).use { outputStream ->
-                        responseBody.byteStream().use { inputStream ->
-                            val buffer = ByteArray(CHUNK_SIZE)
-                            var bytesRead: Int
-                            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                outputStream.write(buffer, 0, bytesRead)
-                                totalBytesRead += bytesRead
-                            }
-                        }
-                    }
-
-                    // Get audio information
-                    val duration = MediaPlayer().apply { setDataSource(file.path) }.duration
-                    val fileSize = file.length()
-                    val numChunks = totalBytesRead / CHUNK_SIZE
-
-                    // Check if audio is complete
-                    val expectedFileSize = duration * bitrate / 8
-                    if (fileSize < expectedFileSize) {
-                        Log.e("textToSpeech", "Audio file is incomplete.")
-                    } else {
-                        val duration = playAudio(file) / 1000
-                        // Log audio information
-                        Log.d("textToSpeech", "Audio Duration: $duration s")
-                        Log.d("textToSpeech", "Audio File Size: $fileSize bytes")
-                        Log.d("textToSpeech", "Number of Chunks: $numChunks")
-                        // Update TextView with TTS text
-                        runOnUiThread {
-                            textViewSubtitles.text = text
-                            textViewSubtitles.startScroll()
-                            textViewSubtitles.setSpeed(duration.toFloat())
-                        }
-                    }
-                } ?: println("Failed to get response body.")
-            } else {
-                Log.e("TextToSpeech", "Request failed: ${response.message}")
-            }
-        } catch (e: IOException) {
-            e.printStackTrace()
-            Log.e("TextToSpeech", "Error during request: ${e.message}")
-        }
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
-        enqueue(object : Callback {
-            override fun onResponse(call: Call, response: Response) {
-                continuation.resume(response) {}
-            }
-
-            override fun onFailure(call: Call, e: IOException) {
-                continuation.resumeWithException(e)
-            }
-        })
-    }
-
-    private fun playAudio(file: File): Int {
-        val mediaPlayer = MediaPlayer()
-        try {
-            Log.d("playAudio", "Playing audio from: ${file.path}")
-            mediaPlayer.setDataSource(file.path)
-            mediaPlayer.prepare()
-            mediaPlayer.start()
-
-            // Handler to log the playback position every second
-            val handler = Handler(Looper.getMainLooper())
-            val runnable = object : Runnable {
-                override fun run() {
-                    if (mediaPlayer.isPlaying) {
-                        Log.d(
-                            "playAudio",
-                            "Current position: ${mediaPlayer.currentPosition / 1000} seconds"
-                        )
-                        handler.postDelayed(this, 1000)
-                    }
-                }
-            }
-
-            // Start logging playback position
-            handler.post(runnable)
-
-            mediaPlayer.setOnCompletionListener {
-                Log.d("playAudio", "Audio completed, deleting file: ${file.path}")
-                it.release()
-                file.delete()
-                handler.removeCallbacks(runnable)
-            }
-        } catch (e: IOException) {
-            e.printStackTrace()
-            Log.e("playAudio", "Error playing audio: ${e.message}")
-        } finally {
-            return mediaPlayer.duration
-        }
     }
 
     companion object {
