@@ -14,8 +14,8 @@ import com.example.myapplication.db.ImageDescriptionDao
 import com.example.myapplication.network.Content
 import com.example.myapplication.network.ImageUrl
 import com.example.myapplication.network.Message
+import com.example.myapplication.network.OpenAiApiService
 import com.example.myapplication.network.OpenAiRequest
-import com.example.myapplication.network.RetrofitInstance
 import com.example.myapplication.util.Constants.API_KEY
 import com.pixelcarrot.base64image.Base64Image
 import kotlinx.coroutines.CoroutineScope
@@ -24,14 +24,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
-import java.util.concurrent.BlockingQueue
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 
-class ImageAnalyzer(
+class ImageAnalyzer @Inject constructor(
     private val imageDescriptionDao: ImageDescriptionDao,
-    private val onImageEncoded: (String) -> Unit,
-    private val onAnswerReceived: (String) -> Unit
+    private val openAiApiService: OpenAiApiService,
+    var onImageEncoded: (String) -> Unit,
+    var onAnswerReceived: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
     private var lastCallTimestamp = 0L
 
@@ -128,7 +128,7 @@ class ImageAnalyzer(
 
         try {
             val response = withContext(Dispatchers.IO) {
-                RetrofitInstance.api.getChatCompletion(API_KEY, request)
+                openAiApiService.getChatCompletion(API_KEY, request)
             }
             val content = response.choices.firstOrNull()?.message?.content
             content?.let {
@@ -202,7 +202,7 @@ class ImageAnalyzer(
 
         try {
             val response = withContext(Dispatchers.IO) {
-                RetrofitInstance.api.getChatCompletion(API_KEY, request)
+                openAiApiService.getChatCompletion(API_KEY, request)
             }
             val content = response.choices.firstOrNull()?.message?.content
             content?.let {

@@ -37,9 +37,10 @@ class DemoActivity : AppCompatActivity() {
     lateinit var speechRecognizerManager: SpeechRecognizerManager
     @Inject
     lateinit var textToSpeechManager: TextToSpeechManager
+    @Inject
+    lateinit var imageAnalyzer: ImageAnalyzer
 
     private var isListening = false
-    private lateinit var imageAnalyzer: ImageAnalyzer
     private lateinit var imageDescriptionDao: ImageDescriptionDao
 
     private lateinit var cameraControl: CameraControl
@@ -64,27 +65,28 @@ class DemoActivity : AppCompatActivity() {
 
         val buttonRecord: Button = findViewById(R.id.button_record)
 
-        initImageAnalyser()
+        initImageAnalyzer()
         handleSpeechRecognition(buttonRecord)
         initCameraOrPermissions()
         handleScaleGestures()
         applyWindowInsetsPadding()
     }
 
-    private fun initImageAnalyser() {
-        imageAnalyzer = ImageAnalyzer(imageDescriptionDao, { base64Image ->
+    private fun initImageAnalyzer() {
+        imageAnalyzer.onImageEncoded = { base64Image ->
             handleImage(base64Image)
-        }, { answer ->
+        }
+        imageAnalyzer.onAnswerReceived = { answer ->
             CoroutineScope(Dispatchers.IO).launch {
                 Log.d("SpeechRecognizerManager", "textToSpeech: $answer")
                 val duration = textToSpeechManager.textToSpeechGPT(answer)
                 runOnUiThread {
                     textViewSubtitles.text = answer
                     textViewSubtitles.startScroll()
-                    textViewSubtitles.setSpeed(duration.toFloat())
+                    textViewSubtitles.setSpeed(duration?.toFloat() ?: 1f)
                 }
             }
-        })
+        }
     }
 
     private fun applyWindowInsetsPadding() {
