@@ -1,7 +1,6 @@
 package com.example.myapplication.di
 
-import com.example.myapplication.db.ImageDescriptionDao
-import com.example.myapplication.network.OpenAiApiService
+import com.example.myapplication.repo.ImageRepository
 import com.example.myapplication.util.ImageAnalyzer
 import dagger.Module
 import dagger.Provides
@@ -15,9 +14,8 @@ object ImageAnalyzerModule {
     @Provides
     @Singleton
     fun provideImageAnalyzer(
-        imageDescriptionDao: ImageDescriptionDao,
-        openAiApiService: OpenAiApiService
+        imageDescriptionDao: ImageRepository
     ): ImageAnalyzer {
-        return ImageAnalyzer(imageDescriptionDao, openAiApiService, {}, {})
+        return ImageAnalyzer(imageDescriptionDao, {}, {})
     }
 }

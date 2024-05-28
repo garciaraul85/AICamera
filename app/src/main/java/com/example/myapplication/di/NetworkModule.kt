@@ -28,5 +28,4 @@ object NetworkModule {
     fun provideOpenAiApiService(retrofit: Retrofit): OpenAiApiService {
         return retrofit.create(OpenAiApiService::class.java)
     }
-
 }

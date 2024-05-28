@@ -10,12 +10,11 @@ import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.example.myapplication.db.ImageDescription
-import com.example.myapplication.db.ImageDescriptionDao
 import com.example.myapplication.network.Content
 import com.example.myapplication.network.ImageUrl
 import com.example.myapplication.network.Message
-import com.example.myapplication.network.OpenAiApiService
 import com.example.myapplication.network.OpenAiRequest
+import com.example.myapplication.repo.ImageRepository
 import com.example.myapplication.util.Constants.API_KEY
 import com.pixelcarrot.base64image.Base64Image
 import kotlinx.coroutines.CoroutineScope
@@ -28,8 +27,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 class ImageAnalyzer @Inject constructor(
-    private val imageDescriptionDao: ImageDescriptionDao,
-    private val openAiApiService: OpenAiApiService,
+    private val imageRepository: ImageRepository,
     var onImageEncoded: (String) -> Unit,
     var onAnswerReceived: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
@@ -128,7 +126,7 @@ class ImageAnalyzer @Inject constructor(
 
         try {
             val response = withContext(Dispatchers.IO) {
-                openAiApiService.getChatCompletion(API_KEY, request)
+                imageRepository.getChatCompletion(request)
             }
             val content = response.choices.firstOrNull()?.message?.content
             content?.let {
@@ -139,9 +137,9 @@ class ImageAnalyzer @Inject constructor(
                         encodedImage = imageBase64,
                         timestamp = System.currentTimeMillis()
                     )
-                    imageDescriptionDao.insertDescription(description)
-                    if (imageDescriptionDao.getLast20Descriptions().size > 20) {
-                        imageDescriptionDao.deleteOldest(1)
+                    imageRepository.insertDescription(description)
+                    if (imageRepository.getLast20Descriptions().size > 20) {
+                        imageRepository.deleteOldest(1)
                     }
                 }
             }
@@ -164,7 +162,7 @@ class ImageAnalyzer @Inject constructor(
 
         // Fetch previous descriptions on the IO thread
         val previousDescriptions = withContext(Dispatchers.IO) {
-            imageDescriptionDao.getLast20Descriptions().map {
+            imageRepository.getLast20Descriptions().map {
                 Message(
                     role = "system",
                     content = listOf(Content(
@@ -202,7 +200,7 @@ class ImageAnalyzer @Inject constructor(
 
         try {
             val response = withContext(Dispatchers.IO) {
-                openAiApiService.getChatCompletion(API_KEY, request)
+                imageRepository.getChatCompletion(request)
             }
             val content = response.choices.firstOrNull()?.message?.content
             content?.let {
