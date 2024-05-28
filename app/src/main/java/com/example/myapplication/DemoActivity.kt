@@ -22,6 +22,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.example.myapplication.db.ImageDescriptionDao
 import com.example.myapplication.text2speech.TextToSpeechManager
 import com.example.myapplication.util.ImageAnalyzer
+import com.example.myapplication.util.ImageApiHandler
 import com.example.myapplication.util.QuestionSingleton
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,8 @@ class DemoActivity : AppCompatActivity() {
     lateinit var textToSpeechManager: TextToSpeechManager
     @Inject
     lateinit var imageAnalyzer: ImageAnalyzer
+    @Inject
+    lateinit var imageApiHandler: ImageApiHandler
 
     private var isListening = false
     private lateinit var imageDescriptionDao: ImageDescriptionDao
@@ -76,14 +79,14 @@ class DemoActivity : AppCompatActivity() {
         imageAnalyzer.onImageEncoded = { base64Image ->
             handleImage(base64Image)
         }
-        imageAnalyzer.onAnswerReceived = { answer ->
+        imageApiHandler.onAnswerReceived = { answer ->
             CoroutineScope(Dispatchers.IO).launch {
                 Log.d("SpeechRecognizerManager", "textToSpeech: $answer")
                 val duration = textToSpeechManager.textToSpeechGPT(answer)
                 runOnUiThread {
                     textViewSubtitles.text = answer
                     textViewSubtitles.startScroll()
-                    textViewSubtitles.setSpeed(duration?.toFloat() ?: 1f)
+                    textViewSubtitles.setSpeed(duration.toFloat())
                 }
             }
         }
@@ -149,14 +152,12 @@ class DemoActivity : AppCompatActivity() {
 
     private fun handleImage(base64Image: String) {
         CoroutineScope(Dispatchers.IO).launch {
-            // Send the image description request
-            imageAnalyzer.streamImagesAndDescribe(base64Image)
+            imageApiHandler.streamImagesAndDescribe(base64Image)
 
-            // Process the question if there is any
             val question = QuestionSingleton.questionQueue.poll()
             Log.d("SpeechRecognizerManager", "handleImage, Question: $question here?")
             if (question != null) {
-                imageAnalyzer.processQuestion(base64Image, question)
+                imageApiHandler.processQuestion(base64Image, question)
             }
         }
     }

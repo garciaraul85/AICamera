@@ -1,7 +1,6 @@
 package com.example.myapplication.di
 
 import com.example.myapplication.network.OpenAiApiService
-import com.example.myapplication.network.RetrofitInstance
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
