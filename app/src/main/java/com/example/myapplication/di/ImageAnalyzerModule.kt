@@ -34,6 +34,6 @@ object ImageAnalyzerModule {
         imageProcessor: ImageProcessor,
         imageApiHandler: ImageApiHandler
     ): ImageAnalyzer {
-        return ImageAnalyzer(imageProcessor, imageApiHandler) {}
+        return ImageAnalyzer(imageProcessor, imageApiHandler) { _, _ ->}
     }
 }

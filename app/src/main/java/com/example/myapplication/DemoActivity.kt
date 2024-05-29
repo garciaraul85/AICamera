@@ -2,11 +2,18 @@ package com.example.myapplication
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
 import android.view.ScaleGestureDetector
 import android.widget.Button
+import android.widget.ImageView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraControl
@@ -24,16 +31,16 @@ import com.example.myapplication.text2speech.TextToSpeechManager
 import com.example.myapplication.util.ImageAnalyzer
 import com.example.myapplication.util.ImageApiHandler
 import com.example.myapplication.util.QuestionSingleton
+import com.pixelcarrot.base64image.Base64Image
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class DemoActivity : AppCompatActivity() {
-    private lateinit var previewView: PreviewView
-
     @Inject
     lateinit var speechRecognizerManager: SpeechRecognizerManager
     @Inject
@@ -43,16 +50,18 @@ class DemoActivity : AppCompatActivity() {
     @Inject
     lateinit var imageApiHandler: ImageApiHandler
 
-    private var isListening = false
-    private lateinit var imageDescriptionDao: ImageDescriptionDao
-
+    private lateinit var textViewSubtitles: SpeedMarquee
+    private lateinit var previewView: PreviewView
+    private lateinit var decodedImageView: ImageView
+    private lateinit var buttonRecord: Button
     private lateinit var cameraControl: CameraControl
     private lateinit var scaleGestureDetector: ScaleGestureDetector
 
+    private lateinit var sensorManager: SensorManager
+    private var rotationDegrees: Int = 0
     private var currentZoomRatio = 1.0f
     private var maxZoomRatio = 1.0f
-
-    private lateinit var textViewSubtitles: SpeedMarquee
+    private var isListening = false
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,13 +69,9 @@ class DemoActivity : AppCompatActivity() {
         enableEdgeToEdge()
         setContentView(R.layout.activity_demo)
         previewView = findViewById(R.id.previewView)
+        decodedImageView = findViewById(R.id.decodedImageView)
         textViewSubtitles = findViewById(R.id.textView_subtitles)
-
-        // Get the database instance from the application context
-        val app = application as App
-        imageDescriptionDao = app.database.imageDescriptionDao()
-
-        val buttonRecord: Button = findViewById(R.id.button_record)
+        buttonRecord = findViewById(R.id.button_record)
 
         initImageAnalyzer()
         handleSpeechRecognition(buttonRecord)
@@ -76,8 +81,9 @@ class DemoActivity : AppCompatActivity() {
     }
 
     private fun initImageAnalyzer() {
-        imageAnalyzer.onImageEncoded = { base64Image ->
+        imageAnalyzer.onImageEncoded = { bitmap, base64Image ->
             handleImage(base64Image)
+            decodedImageView.setImageBitmap(bitmap)
         }
         imageApiHandler.onAnswerReceived = { answer ->
             CoroutineScope(Dispatchers.IO).launch {
@@ -170,6 +176,8 @@ class DemoActivity : AppCompatActivity() {
 
     private fun handleImage(base64Image: String) {
         CoroutineScope(Dispatchers.IO).launch {
+            decodeBase64ToBitmap(base64Image)
+
             imageApiHandler.streamImagesAndDescribe(base64Image)
 
             val question = QuestionSingleton.questionQueue.poll()
@@ -177,6 +185,12 @@ class DemoActivity : AppCompatActivity() {
             if (question != null) {
                 imageApiHandler.processQuestion(base64Image, question)
             }
+        }
+    }
+
+    private fun decodeBase64ToBitmap(base64Image: String) {
+        Base64Image.decode(base64Image) {
+            decodedImageView.setImageBitmap(it)
         }
     }
 

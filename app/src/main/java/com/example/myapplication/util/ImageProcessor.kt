@@ -3,6 +3,7 @@ package com.example.myapplication.util
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
+import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
 import androidx.camera.core.ImageProxy
@@ -13,7 +14,7 @@ import javax.inject.Inject
 
 class ImageProcessor @Inject constructor() {
 
-    fun imageProxyToBitmap(image: ImageProxy): Bitmap? {
+    fun imageProxyToBitmap(image: ImageProxy, rotationDegrees: Int): Bitmap {
         val yBuffer: ByteBuffer = image.planes[0].buffer // Y
         val uBuffer: ByteBuffer = image.planes[1].buffer // U
         val vBuffer: ByteBuffer = image.planes[2].buffer // V
@@ -32,7 +33,14 @@ class ImageProcessor @Inject constructor() {
         val out = ByteArrayOutputStream()
         yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 50, out)
         val imageBytes = out.toByteArray()
-        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        return rotateBitmap(bitmap, rotationDegrees)
+    }
+
+    private fun rotateBitmap(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
+        val matrix = Matrix()
+        matrix.postRotate(rotationDegrees.toFloat())
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     fun encodeImageToBase64(bitmap: Bitmap, callback: (String?) -> Unit) {

@@ -14,7 +14,7 @@ import javax.inject.Inject
 class ImageAnalyzer @Inject constructor(
     private val imageProcessor: ImageProcessor,
     private val imageApiHandler: ImageApiHandler,
-    var onImageEncoded: (String) -> Unit
+    var onImageEncoded: (Bitmap, String) -> Unit
 ) : ImageAnalysis.Analyzer {
     private var lastCallTimestamp = 0L
 
@@ -26,10 +26,9 @@ class ImageAnalyzer @Inject constructor(
             lastCallTimestamp = currentTimestamp
             val mediaImage = image.image
             if (mediaImage != null) {
-                val bitmap = imageProcessor.imageProxyToBitmap(image)
-                bitmap?.let {
-                    processImage(it)
-                }
+                val imageRotationDegrees = image.imageInfo.rotationDegrees
+                val bitmap = imageProcessor.imageProxyToBitmap(image, imageRotationDegrees)
+                processImage(bitmap)
                 image.close()
             }
         } else {
@@ -38,9 +37,10 @@ class ImageAnalyzer @Inject constructor(
     }
 
     private fun processImage(bitmap: Bitmap) {
+//        onImageEncoded(bitmap)
         imageProcessor.encodeImageToBase64(bitmap) { base64Image ->
             base64Image?.let {
-                onImageEncoded(it)
+                onImageEncoded(bitmap, it)
                 CoroutineScope(Dispatchers.IO).launch {
                     imageApiHandler.streamImagesAndDescribe(it)
                 }
