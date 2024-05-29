@@ -22,3 +22,9 @@ data class Content(
 data class ImageUrl(
     @SerializedName("url") val url: String
 )
+
+data class TextToSpeechRequest(
+    @SerializedName("model") val model: String,
+    @SerializedName("input") val input: String,
+    @SerializedName("voice") val voice: String
+)

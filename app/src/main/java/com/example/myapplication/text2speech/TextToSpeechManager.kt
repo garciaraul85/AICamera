@@ -5,13 +5,8 @@ import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.example.myapplication.network.TextToSpeechRequest
 import com.example.myapplication.util.Constants
-import com.example.myapplication.util.await
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -19,46 +14,26 @@ import javax.inject.Inject
 
 class TextToSpeechManager @Inject constructor(
     private val context: Context,
-    private val client: OkHttpClient
+    private val textToSpeechRepository: TextToSpeechRepository
 ) {
 
     suspend fun textToSpeechGPT(text: String): Int {
-        val mediaType = "application/json".toMediaType()
-
         val escapedText = text.replace("\"", "\\\"").replace("\n", "\\n")
         Log.d("textToSpeech", "escapedText: $escapedText")
 
-        // Create the JSON string with proper formatting
-        val jsonBody = """
-        {
-            "model": "tts-1",
-            "input": "$escapedText",
-            "voice": "alloy"
-        }
-        """.trimIndent()
+        val request = TextToSpeechRequest(
+            model = "tts-1",
+            input = escapedText,
+            voice = "alloy"
+        )
 
-        // Log the JSON string for debugging
-        Log.d("TextToSpeech", "Request Body: $jsonBody")
-
-        // Convert the JSON string to RequestBody
-        val requestBody: RequestBody = jsonBody.toRequestBody(mediaType)
-
-        // Build the request
-        val request = Request.Builder()
-            .url("https://api.openai.com/v1/audio/speech")
-            .post(requestBody)
-            .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", Constants.API_KEY)
-            .build()
-
-        Log.d("TextToSpeech", "Request URL: ${request.url}")
-        Log.d("TextToSpeech", "Request Headers: ${request.headers}")
+        Log.d("TextToSpeech", "Request Body: $request")
 
         return try {
-            val response = client.newCall(request).await()
+            val response = textToSpeechRepository.getTextToSpeech(request)
             if (response.isSuccessful) {
                 var totalBytesRead = 0
-                response.body?.let { responseBody ->
+                response.body()?.let { responseBody ->
                     val file = File(context.filesDir, Constants.OUTPUT_FILENAME)
                     FileOutputStream(file).use { outputStream ->
                         responseBody.byteStream().use { inputStream ->
@@ -93,7 +68,7 @@ class TextToSpeechManager @Inject constructor(
                     0
                 }
             } else {
-                Log.e("TextToSpeech", "Request failed: ${response.message}")
+                Log.e("TextToSpeech", "Request failed: ${response.message()}")
                 0
             }
         } catch (e: IOException) {

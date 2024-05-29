@@ -4,7 +4,6 @@ import com.example.myapplication.db.ImageDescription
 import com.example.myapplication.db.ImageDescriptionDao
 import com.example.myapplication.network.OpenAiApiService
 import com.example.myapplication.network.OpenAiRequest
-import com.example.myapplication.util.Constants.API_KEY
 import javax.inject.Inject
 
 class ImageRepository @Inject constructor(
@@ -24,5 +23,5 @@ class ImageRepository @Inject constructor(
         imageDescriptionDao.deleteOldest(count)
     }
 
-    suspend fun getChatCompletion(request: OpenAiRequest) = openAiApiService.getChatCompletion(API_KEY, request)
+    suspend fun getChatCompletion(request: OpenAiRequest) = openAiApiService.getChatCompletion(request)
 }
