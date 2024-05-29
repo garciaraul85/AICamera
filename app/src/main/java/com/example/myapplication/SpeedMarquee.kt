@@ -150,7 +150,7 @@ class SpeedMarquee(context: Context?, attrs: AttributeSet?, defStyle: Int) :
     /**
      * Get text length
      */
-    private val textLength: Int
+    val textLength: Int
         get() {
             val tp = paint
             var rect: Rect? = Rect()

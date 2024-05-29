@@ -84,12 +84,30 @@ class DemoActivity : AppCompatActivity() {
                 Log.d("SpeechRecognizerManager", "textToSpeech: $answer")
                 val duration = textToSpeechManager.textToSpeechGPT(answer)
                 runOnUiThread {
-                    textViewSubtitles.text = answer
-                    textViewSubtitles.startScroll()
-                    textViewSubtitles.setSpeed(duration.toFloat())
+                    animateMarquee(answer, duration)
                 }
             }
         }
+    }
+
+    private fun animateMarquee(answer: String, duration: Int) {
+        textViewSubtitles.text = answer
+
+        // Calculate the length of the text in pixels
+        val textLength = textViewSubtitles.textLength.toFloat()
+
+        // Get the viewable width of the TextView
+        val viewableWidth = textViewSubtitles.width.toFloat()
+
+        // Calculate the total distance the text needs to scroll
+        val totalDistance = textLength - viewableWidth
+
+        // Calculate the speed required for the text to scroll completely in sync with the audio
+        val requiredSpeed = totalDistance / duration
+
+        textViewSubtitles.resumeScroll()
+        textViewSubtitles.setSpeed(requiredSpeed)
+        textViewSubtitles.startScroll()
     }
 
     private fun applyWindowInsetsPadding() {
